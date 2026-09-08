@@ -1,270 +1,369 @@
--- Script de Vuelo - Version Mejorada
-print("Cargando vuelo...")
+ -- MOBILE FLIGHT GUI
+-- Touch controls + draggable GUI
 
-local player = game.Players.LocalPlayer
-local userInput = game:GetService("UserInputService")
-local guiService = game:GetService("GuiService")
-local runService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
-local flying = false
-local flightSpeed = 5
-local maxSpeed = 30
-local isTouching = false
-local touchStartPos, currentTouchPos = nil, nil
-local rotationAngle = 0
-local gyroActive = false
+local Player = Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+local Root = Character:WaitForChild("HumanoidRootPart")
+local Camera = workspace.CurrentCamera
 
--- Variables del personaje
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid")
-local rootPart = character:WaitForChild("HumanoidRootPart")
+local Flying = false
+local Speed = 60
+local MinSpeed = 10
+local MaxSpeed = 250
 
--- Funcion para actualizar personaje
-local function updateCharacter(newChar)
-    character = newChar
-    humanoid = character:WaitForChild("Humanoid")
-    rootPart = character:WaitForChild("HumanoidRootPart")
-    if flying then
-        task.wait(0.5)
-        humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
-        humanoid.PlatformStand = true
-        gyroActive = true
+local BV
+local BG
+
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "MobileFlight"
+Gui.ResetOnSpawn = false
+Gui.Parent = Player:WaitForChild("PlayerGui")
+
+-- Main GUI
+local Main = Instance.new("Frame")
+Main.Size = UDim2.fromOffset(250, 260)
+Main.Position = UDim2.new(0.5, -125, 0.5, -130)
+Main.BackgroundColor3 = Color3.fromRGB(25,25,30)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Parent = Gui
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0,12)
+Corner.Parent = Main
+
+-- Drag system
+local dragging = false
+local dragStart
+local startPos
+
+local function updateDrag(input)
+    local delta = input.Position - dragStart
+    Main.Position = UDim2.new(
+        startPos.X.Scale,
+        startPos.X.Offset + delta.X,
+        startPos.Y.Scale,
+        startPos.Y.Offset + delta.Y
+    )
+end
+
+Main.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = Main.Position
     end
+end)
+
+Main.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        dragStart = dragStart or input.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.Touch then
+        updateDrag(input)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+-- Title
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1,0,0,35)
+Title.BackgroundTransparency = 1
+Title.Text = "MOBILE FLIGHT"
+Title.TextColor3 = Color3.new(1,1,1)
+Title.TextSize = 17
+Title.Font = Enum.Font.GothamBold
+Title.Parent = Main
+
+-- Status
+local Status = Instance.new("TextLabel")
+Status.Size = UDim2.new(1,0,0,25)
+Status.Position = UDim2.fromOffset(0,35)
+Status.BackgroundTransparency = 1
+Status.Text = "OFF"
+Status.TextColor3 = Color3.fromRGB(255,80,80)
+Status.TextSize = 14
+Status.Font = Enum.Font.Gotham
+Status.Parent = Main
+
+-- Fly button
+local Fly = Instance.new("TextButton")
+Fly.Size = UDim2.fromOffset(210,38)
+Fly.Position = UDim2.fromOffset(20,65)
+Fly.BackgroundColor3 = Color3.fromRGB(50,50,60)
+Fly.Text = "FLY"
+Fly.TextColor3 = Color3.new(1,1,1)
+Fly.TextSize = 16
+Fly.Font = Enum.Font.GothamBold
+Fly.Parent = Main
+
+local FlyCorner = Instance.new("UICorner")
+FlyCorner.CornerRadius = UDim.new(0,9)
+FlyCorner.Parent = Fly
+
+-- Joystick
+local StickBase = Instance.new("Frame")
+StickBase.Size = UDim2.fromOffset(100,100)
+StickBase.Position = UDim2.fromOffset(20,125)
+StickBase.BackgroundColor3 = Color3.fromRGB(45,45,55)
+StickBase.BorderSizePixel = 0
+StickBase.Active = true
+StickBase.Parent = Main
+
+local StickCorner = Instance.new("UICorner")
+StickCorner.CornerRadius = UDim.new(1,0)
+StickCorner.Parent = StickBase
+
+local Stick = Instance.new("Frame")
+Stick.Size = UDim2.fromOffset(45,45)
+Stick.Position = UDim2.new(0.5,-22.5,0.5,-22.5)
+Stick.BackgroundColor3 = Color3.fromRGB(110,110,125)
+Stick.BorderSizePixel = 0
+Stick.Active = true
+Stick.Parent = StickBase
+
+local StickCorner2 = Instance.new("UICorner")
+StickCorner2.CornerRadius = UDim.new(1,0)
+StickCorner2.Parent = Stick
+
+local StickInput = nil
+local StickVector = Vector2.zero
+
+local function updateJoystick(input)
+    local center = StickBase.AbsolutePosition +
+        StickBase.AbsoluteSize / 2
+
+    local delta = Vector2.new(
+        input.Position.X - center.X,
+        input.Position.Y - center.Y
+    )
+
+    local radius = 27
+    if delta.Magnitude > radius then
+        delta = delta.Unit * radius
+    end
+
+    Stick.Position = UDim2.new(
+        0.5,
+        delta.X - 22.5,
+        0.5,
+        delta.Y - 22.5
+    )
+
+    StickVector = Vector2.new(
+        delta.X / radius,
+        delta.Y / radius
+    )
 end
-player.CharacterAdded:Connect(updateCharacter)
 
--- Crear GUI
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "FlightGui"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = player.PlayerGui
+StickBase.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        StickInput = input
+        updateJoystick(input)
+    end
+end)
 
--- Panel Principal
-local panel = Instance.new("Frame")
-panel.Size = UDim2.new(0, 180, 0, 160)
-panel.Position = UDim2.new(0.5, -90, 0.5, -80)
-panel.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-panel.BackgroundTransparency = 0.15
-panel.BorderSizePixel = 2
-panel.BorderColor3 = Color3.fromRGB(150, 150, 255)
-panel.Active = true
-panel.Draggable = true
-panel.Parent = screenGui
+UserInputService.InputChanged:Connect(function(input)
+    if StickInput and input == StickInput then
+        updateJoystick(input)
+    end
+end)
 
-local panelCorner = Instance.new("UICorner")
-panelCorner.CornerRadius = UDim.new(0, 12)
-panelCorner.Parent = panel
+UserInputService.InputEnded:Connect(function(input)
+    if input == StickInput then
+        StickInput = nil
+        StickVector = Vector2.zero
 
--- Boton Volar
-local flyButton = Instance.new("TextButton")
-flyButton.Size = UDim2.new(0, 160, 0, 45)
-flyButton.Position = UDim2.new(0.5, -80, 0, 12)
-flyButton.Text = "VOLAR"
-flyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-flyButton.TextScaled = true
-flyButton.BackgroundColor3 = Color3.fromRGB(60, 140, 255)
-flyButton.BorderSizePixel = 0
-flyButton.ZIndex = 10
-flyButton.Parent = panel
+        Stick:TweenPosition(
+            UDim2.new(0.5,-22.5,0.5,-22.5),
+            "Out",
+            "Quad",
+            0.1,
+            true
+        )
+    end
+end)
 
-local flyCorner = Instance.new("UICorner")
-flyCorner.CornerRadius = UDim.new(0, 8)
-flyCorner.Parent = flyButton
+-- Up button
+local Up = Instance.new("TextButton")
+Up.Size = UDim2.fromOffset(50,45)
+Up.Position = UDim2.fromOffset(140,125)
+Up.BackgroundColor3 = Color3.fromRGB(50,50,60)
+Up.Text = "UP"
+Up.TextColor3 = Color3.new(1,1,1)
+Up.TextSize = 14
+Up.Font = Enum.Font.GothamBold
+Up.Parent = Main
 
--- Botones de velocidad (rango 0-30)
-local speedDown = Instance.new("TextButton")
-speedDown.Size = UDim2.new(0, 45, 0, 40)
-speedDown.Position = UDim2.new(0, 10, 0, 72)
-speedDown.Text = "-"
-speedDown.TextColor3 = Color3.fromRGB(255, 255, 255)
-speedDown.TextScaled = true
-speedDown.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
-speedDown.BorderSizePixel = 0
-speedDown.ZIndex = 10
-speedDown.Parent = panel
+-- Down button
+local Down = Instance.new("TextButton")
+Down.Size = UDim2.fromOffset(50,45)
+Down.Position = UDim2.fromOffset(195,125)
+Down.BackgroundColor3 = Color3.fromRGB(50,50,60)
+Down.Text = "DOWN"
+Down.TextColor3 = Color3.new(1,1,1)
+Down.TextSize = 12
+Down.Font = Enum.Font.GothamBold
+Down.Parent = Main
 
-local downCorner = Instance.new("UICorner")
-downCorner.CornerRadius = UDim.new(0, 8)
-downCorner.Parent = speedDown
+local GoingUp = false
+local GoingDown = false
 
-local speedLabel = Instance.new("TextLabel")
-speedLabel.Size = UDim2.new(0, 50, 0, 35)
-speedLabel.Position = UDim2.new(0.5, -25, 0, 75)
-speedLabel.Text = "5"
-speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-speedLabel.TextScaled = true
-speedLabel.BackgroundTransparency = 1
-speedLabel.Font = Enum.Font.GothamBold
-speedLabel.ZIndex = 10
-speedLabel.Parent = panel
+Up.MouseButton1Down:Connect(function()
+    GoingUp = true
+end)
 
-local speedUp = Instance.new("TextButton")
-speedUp.Size = UDim2.new(0, 45, 0, 40)
-speedUp.Position = UDim2.new(0, 125, 0, 72)
-speedUp.Text = "+"
-speedUp.TextColor3 = Color3.fromRGB(255, 255, 255)
-speedUp.TextScaled = true
-speedUp.BackgroundColor3 = Color3.fromRGB(60, 200, 60)
-speedUp.BorderSizePixel = 0
-speedUp.ZIndex = 10
-speedUp.Parent = panel
+Up.MouseButton1Up:Connect(function()
+    GoingUp = false
+end)
 
-local upCorner = Instance.new("UICorner")
-upCorner.CornerRadius = UDim.new(0, 8)
-upCorner.Parent = speedUp
+Down.MouseButton1Down:Connect(function()
+    GoingDown = true
+end)
 
--- Control de velocidad (0-30)
-local function changeSpeed(amount)
-    flightSpeed = math.clamp(flightSpeed + amount, 0, 30)
-    speedLabel.Text = math.floor(flightSpeed)
-    print("Velocidad: " .. flightSpeed)
+Down.MouseButton1Up:Connect(function()
+    GoingDown = false
+end)
+
+-- Speed
+local SpeedText = Instance.new("TextLabel")
+SpeedText.Size = UDim2.fromOffset(120,30)
+SpeedText.Position = UDim2.fromOffset(65,215)
+SpeedText.BackgroundTransparency = 1
+SpeedText.Text = "Speed: "..Speed
+SpeedText.TextColor3 = Color3.new(1,1,1)
+SpeedText.TextSize = 14
+SpeedText.Font = Enum.Font.GothamBold
+SpeedText.Parent = Main
+
+local Minus = Instance.new("TextButton")
+Minus.Size = UDim2.fromOffset(40,30)
+Minus.Position = UDim2.fromOffset(20,215)
+Minus.Text = "-"
+Minus.TextSize = 20
+Minus.TextColor3 = Color3.new(1,1,1)
+Minus.BackgroundColor3 = Color3.fromRGB(50,50,60)
+Minus.Parent = Main
+
+local Plus = Instance.new("TextButton")
+Plus.Size = UDim2.fromOffset(40,30)
+Plus.Position = UDim2.fromOffset(190,215)
+Plus.Text = "+"
+Plus.TextSize = 20
+Plus.TextColor3 = Color3.new(1,1,1)
+Plus.BackgroundColor3 = Color3.fromRGB(50,50,60)
+Plus.Parent = Main
+
+Plus.MouseButton1Click:Connect(function()
+    Speed = math.min(Speed + 10, MaxSpeed)
+    SpeedText.Text = "Speed: "..Speed
+end)
+
+Minus.MouseButton1Click:Connect(function()
+    Speed = math.max(Speed - 10, MinSpeed)
+    SpeedText.Text = "Speed: "..Speed
+end)
+
+-- Start flight
+local function StartFlight()
+    if Flying then return end
+
+    Flying = true
+
+    Status.Text = "ON"
+    Status.TextColor3 = Color3.fromRGB(80,255,100)
+    Fly.Text = "STOP"
+
+    Humanoid.PlatformStand = true
+
+    BV = Instance.new("BodyVelocity")
+    BV.MaxForce = Vector3.new(math.huge,math.huge,math.huge)
+    BV.Velocity = Vector3.zero
+    BV.Parent = Root
+
+    BG = Instance.new("BodyGyro")
+    BG.MaxTorque = Vector3.new(math.huge,math.huge,math.huge)
+    BG.P = 90000
+    BG.Parent = Root
 end
 
--- Funcion principal de vuelo
-local function toggleFlight()
-    flying = not flying
-    
-    if flying then
-        flyButton.Text = "ATERRIZAR"
-        flyButton.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-        humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
-        humanoid.PlatformStand = true
-        gyroActive = true
-        rotationAngle = 0
-        
-        -- Crear BodyGyro para giro
-        local gyro = Instance.new("BodyGyro")
-        gyro.MaxTorque = Vector3.new(4000, 0, 4000)
-        gyro.P = 3000
-        gyro.Parent = rootPart
-        rootPart.BodyGyro = gyro
-        
-        print("Vuelo ACTIVADO - Velocidad: " .. flightSpeed)
+-- Stop flight
+local function StopFlight()
+    Flying = false
+
+    Status.Text = "OFF"
+    Status.TextColor3 = Color3.fromRGB(255,80,80)
+    Fly.Text = "FLY"
+
+    if BV then
+        BV:Destroy()
+        BV = nil
+    end
+
+    if BG then
+        BG:Destroy()
+        BG = nil
+    end
+
+    Humanoid.PlatformStand = false
+end
+
+Fly.MouseButton1Click:Connect(function()
+    if Flying then
+        StopFlight()
     else
-        flyButton.Text = "VOLAR"
-        flyButton.BackgroundColor3 = Color3.fromRGB(60, 140, 255)
-        humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
-        humanoid.PlatformStand = false
-        gyroActive = false
-        
-        if rootPart then
-            rootPart.Velocity = Vector3.new(0, -5, 0)
-            if rootPart:FindFirstChild("BodyGyro") then
-                rootPart.BodyGyro:Destroy()
-            end
-        end
-        print("Vuelo DESACTIVADO")
+        StartFlight()
     end
-end
+end)
 
--- Control tactil
-local function onTouchBegan(input, gameProcessed)
-    if gameProcessed then return end
-    if input.UserInputType == Enum.UserInputType.Touch then
-        local guiObject = guiService:GetGuiObjectAtPosition(input.Position)
-        if guiObject and guiObject:IsDescendantOf(panel) then return end
-        
-        isTouching = true
-        touchStartPos = input.Position
-        currentTouchPos = input.Position
+-- Flight movement
+RunService.RenderStepped:Connect(function()
+    if not Flying or not BV or not BG then
+        return
     end
-end
 
-local function onTouchMoved(input, gameProcessed)
-    if gameProcessed then return end
-    if input.UserInputType == Enum.UserInputType.Touch and isTouching then
-        currentTouchPos = input.Position
+    local forward = Camera.CFrame.LookVector
+    local right = Camera.CFrame.RightVector
+
+    local direction =
+        (right * StickVector.X) +
+        (forward * -StickVector.Y)
+
+    local vertical = 0
+
+    if GoingUp then
+        vertical = vertical + 1
     end
-end
 
-local function onTouchEnded(input, gameProcessed)
-    if gameProcessed then return end
-    if input.UserInputType == Enum.UserInputType.Touch then
-        isTouching = false
-        touchStartPos, currentTouchPos = nil, nil
-        if rootPart and flying then
-            rootPart.Velocity = Vector3.new(0, rootPart.Velocity.Y, 0)
-        end
+    if GoingDown then
+        vertical = vertical - 1
     end
-end
 
-userInput.TouchBegan:Connect(onTouchBegan)
-userInput.TouchMoved:Connect(onTouchMoved)
-userInput.TouchEnded:Connect(onTouchEnded)
+    direction = direction + Vector3.new(0,vertical,0)
 
--- Sistema de vuelo mejorado (con giro y movimiento real)
-coroutine.wrap(function()
-    while true do
-        task.wait()
-        
-        if flying and rootPart and humanoid then
-            -- Mantener gravedad en 0
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
-            humanoid.PlatformStand = true
-            
-            -- Actualizar giro (BodyGyro)
-            if rootPart:FindFirstChild("BodyGyro") and gyroActive then
-                local camera = workspace.CurrentCamera
-                local lookVector = camera.CFrame.LookVector
-                local upVector = camera.CFrame.UpVector
-                
-                -- Orientar al personaje en direccion de vuelo
-                if isTouching and touchStartPos and currentTouchPos then
-                    local delta = currentTouchPos - touchStartPos
-                    if delta.Magnitude > 5 then
-                        local angle = math.atan2(-delta.Y, delta.X)
-                        local direction = Vector3.new(math.cos(angle), 0, math.sin(angle))
-                        
-                        -- Girar suavemente
-                        local targetCFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + direction)
-                        rootPart.BodyGyro.CFrame = targetCFrame
-                    end
-                end
-            end
-            
-            -- Movimiento tactil
-            if isTouching and touchStartPos and currentTouchPos then
-                local delta = currentTouchPos - touchStartPos
-                local magnitude = math.min(delta.Magnitude / 100, 1)
-                
-                if magnitude > 0.05 and flightSpeed > 0 then
-                    local camera = workspace.CurrentCamera
-                    local forward = camera.CFrame.LookVector
-                    local right = camera.CFrame.RightVector
-                    
-                    local angle = math.atan2(-delta.Y, delta.X)
-                    local xMove = math.cos(angle) * magnitude
-                    local zMove = math.sin(angle) * magnitude
-                    
-                    local moveDirection = (right * xMove + forward * zMove) * (flightSpeed * 2)
-                    
-                    -- Movimiento vertical (arrastre vertical)
-                    local verticalInput = -delta.Y / 150
-                    if math.abs(verticalInput) > 0.2 then
-                        moveDirection = Vector3.new(
-                            moveDirection.X,
-                            verticalInput * flightSpeed * 1.5,
-                            moveDirection.Z
-                        )
-                    else
-                        moveDirection = Vector3.new(moveDirection.X, 0, moveDirection.Z)
-                    end
-                    
-                    rootPart.Velocity = moveDirection
-                else
-                    rootPart.Velocity = Vector3.new(0, 0, 0)
-                end
-            else
-                -- Si no se toca, flotar quieto
-                rootPart.Velocity = Vector3.new(0, 0, 0)
-            end
-        end
-    end
-end)()
+    BV.Velocity = direction * Speed
 
--- Conexion de botones
-flyButton.MouseButton1Click:Connect(toggleFlight)
-speedUp.MouseButton1Click:Connect(function() changeSpeed(1) end)
-speedDown.MouseButton1Click:Connect(function() changeSpeed(-1) end)
+    BG.CFrame = Camera.CFrame
+end)
 
-print("Script listo! Velocidad 0-30. Toca VOLAR y arrastra para moverte.")
+-- Respawn
+Player.CharacterAdded:Connect(function(char)
+    StopFlight()
+
+    Character = char
+    Humanoid = Character:WaitForChild("Humanoid")
+    Root = Character:WaitForChild("HumanoidRootPart")
+end)
