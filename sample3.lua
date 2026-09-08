@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -16,7 +17,7 @@ local gyro
 
 -- GUI
 local gui = Instance.new("ScreenGui")
-gui.Name = "FlightGui"
+gui.Name = "MobileFlight"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
@@ -27,12 +28,43 @@ frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 frame.BackgroundTransparency = 0.15
 frame.BorderSizePixel = 0
 frame.Active = true
-frame.Draggable = true
 frame.Parent = gui
 
 local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 8)
 corner.Parent = frame
+
+-- Arrastrar GUI con el dedo
+local dragging = false
+local dragStart
+local startPosition
+
+frame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPosition = frame.Position
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and input.UserInputType == Enum.UserInputType.Touch then
+		local delta = input.Position - dragStart
+
+		frame.Position = UDim2.new(
+			startPosition.X.Scale,
+			startPosition.X.Offset + delta.X,
+			startPosition.Y.Scale,
+			startPosition.Y.Offset + delta.Y
+		)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch then
+		dragging = false
+	end
+end)
 
 local function createButton(text, position)
 	local button = Instance.new("TextButton")
@@ -57,7 +89,7 @@ local flyButton = createButton("VOLAR", UDim2.fromOffset(5, 5))
 local minusButton = createButton("-", UDim2.fromOffset(57, 5))
 local plusButton = createButton("+", UDim2.fromOffset(110, 5))
 
--- Iniciar vuelo
+-- Vuelo
 local function startFlight()
 	if flying then return end
 
@@ -67,8 +99,6 @@ local function startFlight()
 
 	flying = true
 	flyButton.Text = "PARAR"
-
-	humanoid.PlatformStand = true
 
 	velocity = Instance.new("BodyVelocity")
 	velocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
@@ -81,7 +111,6 @@ local function startFlight()
 	gyro.Parent = root
 end
 
--- Detener vuelo
 local function stopFlight()
 	flying = false
 	flyButton.Text = "VOLAR"
@@ -95,13 +124,9 @@ local function stopFlight()
 		gyro:Destroy()
 		gyro = nil
 	end
-
-	if humanoid then
-		humanoid.PlatformStand = false
-	end
 end
 
-flyButton.MouseButton1Click:Connect(function()
+flyButton.Activated:Connect(function()
 	if flying then
 		stopFlight()
 	else
@@ -109,29 +134,51 @@ flyButton.MouseButton1Click:Connect(function()
 	end
 end)
 
-minusButton.MouseButton1Click:Connect(function()
+minusButton.Activated:Connect(function()
 	speed = math.max(minSpeed, speed - 10)
 end)
 
-plusButton.MouseButton1Click:Connect(function()
+plusButton.Activated:Connect(function()
 	speed = math.min(maxSpeed, speed + 10)
 end)
 
--- Movimiento usando el joystick normal de Roblox
+-- Movimiento completo
 RunService.RenderStepped:Connect(function()
 	if not flying or not velocity or not root then
 		return
 	end
 
-	local moveDirection = humanoid.MoveDirection
+	local camera = workspace.CurrentCamera
+	local move = humanoid.MoveDirection
 
-	if moveDirection.Magnitude > 0 then
-		velocity.Velocity = moveDirection * speed
+	if move.Magnitude > 0 then
+		-- El joystick normal controla la dirección
+		-- La cámara determina también la dirección vertical
+		local direction = camera.CFrame.LookVector
+
+		-- Mantiene la dirección horizontal del joystick
+		local horizontal = Vector3.new(move.X, 0, move.Z)
+
+		-- Inclinación de cámara para subir/bajar
+		local vertical = direction.Y
+
+		local finalDirection = Vector3.new(
+			horizontal.X,
+			vertical,
+			horizontal.Z
+		)
+
+		if finalDirection.Magnitude > 0 then
+			velocity.Velocity = finalDirection.Unit * speed
+		else
+			velocity.Velocity = Vector3.zero
+		end
 	else
 		velocity.Velocity = Vector3.zero
 	end
 
-	gyro.CFrame = workspace.CurrentCamera.CFrame
+	-- Orientación del personaje
+	gyro.CFrame = camera.CFrame
 end)
 
 -- Respawn
