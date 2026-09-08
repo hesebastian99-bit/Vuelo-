@@ -15,9 +15,12 @@ local maxSpeed = 250
 local velocity
 local gyro
 
+local savedMotors = {}
+
 -- GUI
+
 local gui = Instance.new("ScreenGui")
-gui.Name = "MobileFlight"
+gui.Name = "SupermanFlight"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
@@ -34,7 +37,8 @@ local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 8)
 corner.Parent = frame
 
--- Arrastrar GUI con el dedo
+-- Mover la GUI con el dedo
+
 local dragging = false
 local dragStart
 local startPosition
@@ -66,6 +70,8 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
+-- Botones
+
 local function createButton(text, position)
 	local button = Instance.new("TextButton")
 	button.Size = UDim2.fromOffset(50, 35)
@@ -89,27 +95,135 @@ local flyButton = createButton("VOLAR", UDim2.fromOffset(5, 5))
 local minusButton = createButton("-", UDim2.fromOffset(57, 5))
 local plusButton = createButton("+", UDim2.fromOffset(110, 5))
 
--- Vuelo
+-- Guardar las articulaciones originales
+
+local function saveMotors()
+	savedMotors = {}
+
+	for _, obj in ipairs(character:GetDescendants()) do
+		if obj:IsA("Motor6D") then
+			savedMotors[obj] = obj.C0
+		end
+	end
+end
+
+-- Pose Superman
+
+local function supermanPose()
+	if not character then return end
+
+	local upperTorso = character:FindFirstChild("UpperTorso")
+	local lowerTorso = character:FindFirstChild("LowerTorso")
+
+	if not upperTorso then
+		upperTorso = character:FindFirstChild("Torso")
+	end
+
+	if not upperTorso then return end
+
+	local rightShoulder = upperTorso:FindFirstChild("RightShoulder")
+	local leftShoulder = upperTorso:FindFirstChild("LeftShoulder")
+
+	local rightHip
+	local leftHip
+
+	if lowerTorso then
+		rightHip = lowerTorso:FindFirstChild("RightHip")
+		leftHip = lowerTorso:FindFirstChild("LeftHip")
+	end
+
+	-- Brazos hacia adelante
+
+	if rightShoulder then
+		rightShoulder.C0 =
+			CFrame.new(1, 0.5, 0) *
+			CFrame.Angles(math.rad(-80), 0, math.rad(10))
+	end
+
+	if leftShoulder then
+		leftShoulder.C0 =
+			CFrame.new(-1, 0.5, 0) *
+			CFrame.Angles(math.rad(-80), 0, math.rad(-10))
+	end
+
+	-- Piernas ligeramente hacia atrás
+
+	if rightHip then
+		rightHip.C0 =
+			CFrame.new(0.5, -1, 0) *
+			CFrame.Angles(math.rad(15), 0, 0)
+	end
+
+	if leftHip then
+		leftHip.C0 =
+			CFrame.new(-0.5, -1, 0) *
+			CFrame.Angles(math.rad(15), 0, 0)
+	end
+end
+
+-- Restaurar pose normal
+
+local function normalPose()
+	for motor, c0 in pairs(savedMotors) do
+		if motor and motor.Parent then
+			motor.C0 = c0
+		end
+	end
+end
+
+-- Protección de vida local
+
+local savedHealth = 100
+
+local function protectHealth()
+	if humanoid and humanoid.Health > 0 then
+		if humanoid.MaxHealth > 0 then
+			humanoid.Health = humanoid.MaxHealth
+		end
+	end
+end
+
+-- Activar vuelo
+
 local function startFlight()
 	if flying then return end
 
 	character = player.Character
+	if not character then return end
+
 	humanoid = character:WaitForChild("Humanoid")
 	root = character:WaitForChild("HumanoidRootPart")
+
+	saveMotors()
 
 	flying = true
 	flyButton.Text = "PARAR"
 
+	savedHealth = humanoid.Health
+
 	velocity = Instance.new("BodyVelocity")
-	velocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+	velocity.MaxForce = Vector3.new(
+		math.huge,
+		math.huge,
+		math.huge
+	)
 	velocity.Velocity = Vector3.zero
 	velocity.Parent = root
 
 	gyro = Instance.new("BodyGyro")
-	gyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+	gyro.MaxTorque = Vector3.new(
+		math.huge,
+		math.huge,
+		math.huge
+	)
 	gyro.P = 50000
+	gyro.D = 1000
 	gyro.Parent = root
+
+	supermanPose()
 end
+
+-- Desactivar vuelo
 
 local function stopFlight()
 	flying = false
@@ -124,7 +238,15 @@ local function stopFlight()
 		gyro:Destroy()
 		gyro = nil
 	end
+
+	if humanoid then
+		humanoid.PlatformStand = false
+	end
+
+	normalPose()
 end
+
+-- Botón volar
 
 flyButton.Activated:Connect(function()
 	if flying then
@@ -134,58 +256,96 @@ flyButton.Activated:Connect(function()
 	end
 end)
 
+-- Velocidad -
+
 minusButton.Activated:Connect(function()
 	speed = math.max(minSpeed, speed - 10)
 end)
+
+-- Velocidad +
 
 plusButton.Activated:Connect(function()
 	speed = math.min(maxSpeed, speed + 10)
 end)
 
--- Movimiento completo
+-- Vuelo
+
 RunService.RenderStepped:Connect(function()
-	if not flying or not velocity or not root then
+	if not flying then
 		return
 	end
 
+	if not character or not humanoid or not root then
+		return
+	end
+
+	if not velocity or not gyro then
+		return
+	end
+
+	-- Mantener vida mientras está volando
+
+	protectHealth()
+
+	-- Movimiento del joystick normal de Roblox
+
+	local moveDirection = humanoid.MoveDirection
 	local camera = workspace.CurrentCamera
-	local move = humanoid.MoveDirection
 
-	if move.Magnitude > 0 then
-		-- El joystick normal controla la dirección
-		-- La cámara determina también la dirección vertical
-		local direction = camera.CFrame.LookVector
+	if moveDirection.Magnitude > 0 then
 
-		-- Mantiene la dirección horizontal del joystick
-		local horizontal = Vector3.new(move.X, 0, move.Z)
+		local cameraLook = camera.CFrame.LookVector
+		local cameraRight = camera.CFrame.RightVector
 
-		-- Inclinación de cámara para subir/bajar
-		local vertical = direction.Y
+		local forwardAmount =
+			moveDirection:Dot(Vector3.new(cameraLook.X, 0, cameraLook.Z))
 
-		local finalDirection = Vector3.new(
+		local rightAmount =
+			moveDirection:Dot(Vector3.new(cameraRight.X, 0, cameraRight.Z))
+
+		local horizontal =
+			Vector3.new(cameraLook.X, 0, cameraLook.Z).Unit * forwardAmount
+			+
+			Vector3.new(cameraRight.X, 0, cameraRight.Z).Unit * rightAmount
+
+		-- La inclinación de la cámara permite subir y bajar
+
+		local vertical = cameraLook.Y
+
+		local direction = Vector3.new(
 			horizontal.X,
 			vertical,
 			horizontal.Z
 		)
 
-		if finalDirection.Magnitude > 0 then
-			velocity.Velocity = finalDirection.Unit * speed
-		else
-			velocity.Velocity = Vector3.zero
+		if direction.Magnitude > 0 then
+			velocity.Velocity = direction.Unit * speed
 		end
+
 	else
 		velocity.Velocity = Vector3.zero
 	end
 
-	-- Orientación del personaje
+	-- Mirar hacia donde apunta la cámara
+
 	gyro.CFrame = camera.CFrame
+
+	-- Mantener pose Superman
+
+	supermanPose()
 end)
 
 -- Respawn
+
 player.CharacterAdded:Connect(function(newCharacter)
+
 	stopFlight()
 
 	character = newCharacter
+
 	humanoid = character:WaitForChild("Humanoid")
 	root = character:WaitForChild("HumanoidRootPart")
+
+	savedMotors = {}
+
 end)
