@@ -1,120 +1,168 @@
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
-local savedPosition = nil
 
+-- CONFIGURACIÓN
+local checkpointFolder = workspace:WaitForChild("Checkpoints")
+
+local speeds = {
+	[1] = 0.8, -- Lento
+	[2] = 0.3, -- Rápido
+	[3] = 0.08 -- Rapidísimo
+}
+
+local speedLevel = 1
+local playing = false
+
+local checkpoints = {}
+
+--------------------------------------------------
+-- DETECTAR CHECKPOINTS
+--------------------------------------------------
+
+local function getNumber(part)
+	local number = tonumber(string.match(part.Name, "%d+"))
+	return number
+end
+
+local function findCheckpoints()
+	checkpoints = {}
+
+	for _, object in ipairs(checkpointFolder:GetChildren()) do
+		if object:IsA("BasePart") then
+			table.insert(checkpoints, object)
+		end
+	end
+
+	table.sort(checkpoints, function(a, b)
+		local aNumber = getNumber(a)
+		local bNumber = getNumber(b)
+
+		if aNumber and bNumber then
+			return aNumber < bNumber
+		elseif aNumber then
+			return true
+		elseif bNumber then
+			return false
+		end
+
+		return a.Position.X < b.Position.X
+	end)
+end
+
+findCheckpoints()
+
+--------------------------------------------------
 -- GUI
+--------------------------------------------------
+
 local gui = Instance.new("ScreenGui")
-gui.Name = "GP_IRP"
+gui.Name = "CheckpointController"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
--- Panel
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 190, 0, 125)
-frame.Position = UDim2.new(0.5, -95, 0.5, -60)
-frame.BackgroundTransparency = 0.1
+frame.Size = UDim2.new(0, 170, 0, 65)
+frame.Position = UDim2.new(0.5, -85, 0.75, 0)
+frame.BackgroundTransparency = 0.15
 frame.Parent = gui
 
--- Zona para agarrar y mover
-local dragArea = Instance.new("TextLabel")
-dragArea.Size = UDim2.new(1, 0, 0, 35)
-dragArea.Position = UDim2.new(0, 0, 0, 0)
-dragArea.Text = "MOVER"
-dragArea.TextSize = 16
-dragArea.BackgroundTransparency = 1
-dragArea.Parent = frame
+local play = Instance.new("TextButton")
+play.Size = UDim2.new(0, 80, 0, 28)
+play.Position = UDim2.new(0, 3, 0, 3)
+play.Text = "PLAY"
+play.TextSize = 14
+play.Parent = frame
 
--- GP
-local gp = Instance.new("TextButton")
-gp.Size = UDim2.new(0, 80, 0, 60)
-gp.Position = UDim2.new(0, 10, 0, 50)
-gp.Text = "GP"
-gp.TextSize = 24
-gp.Parent = frame
+local pause = Instance.new("TextButton")
+pause.Size = UDim2.new(0, 80, 0, 28)
+pause.Position = UDim2.new(0, 87, 0, 3)
+pause.Text = "PAUSA"
+pause.TextSize = 14
+pause.Parent = frame
 
--- IRP
-local irp = Instance.new("TextButton")
-irp.Size = UDim2.new(0, 80, 0, 60)
-irp.Position = UDim2.new(0, 100, 0, 50)
-irp.Text = "IRP"
-irp.TextSize = 24
-irp.Parent = frame
+local minus = Instance.new("TextButton")
+minus.Size = UDim2.new(0, 45, 0, 28)
+minus.Position = UDim2.new(0, 3, 0, 34)
+minus.Text = "-"
+minus.TextSize = 18
+minus.Parent = frame
 
--- Guardar posición
-gp.Activated:Connect(function()
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
+local speed = Instance.new("TextLabel")
+speed.Size = UDim2.new(0, 70, 0, 28)
+speed.Position = UDim2.new(0, 50, 0, 34)
+speed.Text = "1"
+speed.TextSize = 18
+speed.BackgroundTransparency = 1
+speed.Parent = frame
 
-    if root then
-        savedPosition = root.CFrame
-        gp.Text = "OK"
+local plus = Instance.new("TextButton")
+plus.Size = UDim2.new(0, 45, 0, 28)
+plus.Position = UDim2.new(0, 122, 0, 34)
+plus.Text = "+"
+plus.TextSize = 18
+plus.Parent = frame
 
-        task.delay(1, function()
-            gp.Text = "GP"
-        end)
-    end
+--------------------------------------------------
+-- CAMBIAR VELOCIDAD
+--------------------------------------------------
+
+minus.Activated:Connect(function()
+	if speedLevel > 1 then
+		speedLevel -= 1
+		speed.Text = tostring(speedLevel)
+	end
 end)
 
--- Ir a posición
-irp.Activated:Connect(function()
-    if not savedPosition then
-        irp.Text = "NO POS"
-
-        task.delay(1, function()
-            irp.Text = "IRP"
-        end)
-
-        return
-    end
-
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-
-    if root then
-        root.CFrame = savedPosition
-    end
+plus.Activated:Connect(function()
+	if speedLevel < 3 then
+		speedLevel += 1
+		speed.Text = tostring(speedLevel)
+	end
 end)
 
--- ARRÁSTRALO CON EL DEDO
-local dragging = false
-local dragStart = nil
-local startPosition = nil
+--------------------------------------------------
+-- PLAY
+--------------------------------------------------
 
-dragArea.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+play.Activated:Connect(function()
+	if playing then
+		return
+	end
 
-        dragging = true
-        dragStart = input.Position
-        startPosition = frame.Position
-    end
+	findCheckpoints()
+
+	if #checkpoints == 0 then
+		play.Text = "SIN CP"
+		task.wait(1)
+		play.Text = "PLAY"
+		return
+	end
+
+	playing = true
+
+	for _, checkpoint in ipairs(checkpoints) do
+		if not playing then
+			break
+		end
+
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+
+		if root and checkpoint and checkpoint.Parent then
+			root.CFrame = checkpoint.CFrame + Vector3.new(0, 4, 0)
+		end
+
+		task.wait(speeds[speedLevel])
+	end
+
+	playing = false
 end)
 
-UserInputService.InputChanged:Connect(function(input)
-    if not dragging then
-        return
-    end
+--------------------------------------------------
+-- PAUSA
+--------------------------------------------------
 
-    if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseMovement then
-
-        local delta = input.Position - dragStart
-
-        frame.Position = UDim2.new(
-            startPosition.X.Scale,
-            startPosition.X.Offset + delta.X,
-            startPosition.Y.Scale,
-            startPosition.Y.Offset + delta.Y
-        )
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1 then
-
-        dragging = false
-    end
+pause.Activated:Connect(function()
+	playing = false
 end)
