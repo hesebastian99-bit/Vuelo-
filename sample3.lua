@@ -1,66 +1,71 @@
 local Players = game:GetService("Players")
-local player = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
 
-local savedCFrame = nil
+local player = Players.LocalPlayer
+local savedPosition = nil
 
 -- GUI
 local gui = Instance.new("ScreenGui")
-gui.Name = "PositionTP"
+gui.Name = "GP_IRP"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
--- Ventana
+-- Panel
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 220, 0, 130)
-frame.Position = UDim2.new(0.5, -110, 0.5, -65)
-frame.BackgroundTransparency = 0.15
+frame.Size = UDim2.new(0, 190, 0, 125)
+frame.Position = UDim2.new(0.5, -95, 0.5, -60)
+frame.BackgroundTransparency = 0.1
 frame.Parent = gui
 
--- Título
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 35)
-title.Text = "GUARDAR POSICIÓN"
-title.TextSize = 18
-title.BackgroundTransparency = 1
-title.Parent = frame
+-- Zona para agarrar y mover
+local dragArea = Instance.new("TextLabel")
+dragArea.Size = UDim2.new(1, 0, 0, 35)
+dragArea.Position = UDim2.new(0, 0, 0, 0)
+dragArea.Text = "MOVER"
+dragArea.TextSize = 16
+dragArea.BackgroundTransparency = 1
+dragArea.Parent = frame
 
 -- GP
 local gp = Instance.new("TextButton")
-gp.Size = UDim2.new(0, 90, 0, 55)
-gp.Position = UDim2.new(0, 10, 0, 55)
+gp.Size = UDim2.new(0, 80, 0, 60)
+gp.Position = UDim2.new(0, 10, 0, 50)
 gp.Text = "GP"
-gp.TextSize = 22
+gp.TextSize = 24
 gp.Parent = frame
 
 -- IRP
 local irp = Instance.new("TextButton")
-irp.Size = UDim2.new(0, 90, 0, 55)
-irp.Position = UDim2.new(0, 120, 0, 55)
+irp.Size = UDim2.new(0, 80, 0, 60)
+irp.Position = UDim2.new(0, 100, 0, 50)
 irp.Text = "IRP"
-irp.TextSize = 22
+irp.TextSize = 24
 irp.Parent = frame
 
 -- Guardar posición
-gp.MouseButton1Click:Connect(function()
+gp.Activated:Connect(function()
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
 
     if root then
-        savedCFrame = root.CFrame
-        gp.Text = "GUARDADO"
+        savedPosition = root.CFrame
+        gp.Text = "OK"
 
-        task.wait(1)
-        gp.Text = "GP"
+        task.delay(1, function()
+            gp.Text = "GP"
+        end)
     end
 end)
 
 -- Ir a posición
-irp.MouseButton1Click:Connect(function()
-    if not savedCFrame then
-        irp.Text = "SIN POS"
+irp.Activated:Connect(function()
+    if not savedPosition then
+        irp.Text = "NO POS"
 
-        task.wait(1)
-        irp.Text = "IRP"
+        task.delay(1, function()
+            irp.Text = "IRP"
+        end)
+
         return
     end
 
@@ -68,49 +73,48 @@ irp.MouseButton1Click:Connect(function()
     local root = character and character:FindFirstChild("HumanoidRootPart")
 
     if root then
-        root.CFrame = savedCFrame
+        root.CFrame = savedPosition
     end
 end)
 
--- Hacer la ventana arrastrable
+-- ARRÁSTRALO CON EL DEDO
 local dragging = false
-local dragStart
-local startPos
+local dragStart = nil
+local startPosition = nil
 
-title.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
+dragArea.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
 
         dragging = true
         dragStart = input.Position
-        startPos = frame.Position
-
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
+        startPosition = frame.Position
     end
 end)
 
-title.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch then
+UserInputService.InputChanged:Connect(function(input)
+    if not dragging then
+        return
+    end
 
-        local connection
-        connection = input.Changed:Connect(function()
-            if dragging then
-                local delta = input.Position - dragStart
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseMovement then
 
-                frame.Position = UDim2.new(
-                    startPos.X.Scale,
-                    startPos.X.Offset + delta.X,
-                    startPos.Y.Scale,
-                    startPos.Y.Offset + delta.Y
-                )
-            else
-                connection:Disconnect()
-            end
-        end)
+        local delta = input.Position - dragStart
+
+        frame.Position = UDim2.new(
+            startPosition.X.Scale,
+            startPosition.X.Offset + delta.X,
+            startPosition.Y.Scale,
+            startPosition.Y.Offset + delta.Y
+        )
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+        dragging = false
     end
 end)
