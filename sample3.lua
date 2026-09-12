@@ -1,202 +1,116 @@
--- LobbyPointTeleporter.lua
--- Roblox / Luau
--- Los puntos deben estar en Workspace > RespawnPoints
--- Ejemplo: Point1, Point2, Point3, Point4...
-
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
-local pointsFolder = workspace:WaitForChild("RespawnPoints")
+local savedCFrame = nil
 
--- Velocidades del 1 al 10.
--- Mientras mayor sea el número, más rápido será el recorrido.
-local speeds = {
-	2.00, -- 1
-	1.50, -- 2
-	1.15, -- 3
-	0.90, -- 4
-	0.70, -- 5
-	0.50, -- 6
-	0.35, -- 7
-	0.25, -- 8
-	0.15, -- 9
-	0.05  -- 10: Súper rápido
-}
-
-local speedLevel = 1
-local running = false
-local paused = false
-
-local function getPoints()
-	local points = {}
-
-	for _, obj in ipairs(pointsFolder:GetChildren()) do
-		if obj:IsA("BasePart") then
-			table.insert(points, obj)
-
-		elseif obj:IsA("Model") then
-			local part = obj.PrimaryPart
-				or obj:FindFirstChildWhichIsA("BasePart", true)
-
-			if part then
-				table.insert(points, part)
-			end
-		end
-	end
-
-	table.sort(points, function(a, b)
-		local numberA = tonumber(a.Name:match("%d+")) or math.huge
-		local numberB = tonumber(b.Name:match("%d+")) or math.huge
-
-		return numberA < numberB
-	end)
-
-	return points
-end
-
-local function teleportTo(part)
-	local character = player.Character
-		or player.CharacterAdded:Wait()
-
-	local root = character:FindFirstChild("HumanoidRootPart")
-
-	if root then
-		root.CFrame = part.CFrame + Vector3.new(0, 3, 0)
-	end
-end
-
--- Crear interfaz
-
+-- GUI
 local gui = Instance.new("ScreenGui")
-gui.Name = "LobbyPointTeleporter"
+gui.Name = "PositionTP"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
+-- Ventana
 local frame = Instance.new("Frame")
-frame.Size = UDim2.fromOffset(220, 105)
-frame.Position = UDim2.new(0.5, -110, 0.8, 0)
-frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+frame.Size = UDim2.new(0, 220, 0, 130)
+frame.Position = UDim2.new(0.5, -110, 0.5, -65)
 frame.BackgroundTransparency = 0.15
-frame.BorderSizePixel = 0
 frame.Parent = gui
 
-local frameCorner = Instance.new("UICorner")
-frameCorner.CornerRadius = UDim.new(0, 10)
-frameCorner.Parent = frame
+-- Título
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 35)
+title.Text = "GUARDAR POSICIÓN"
+title.TextSize = 18
+title.BackgroundTransparency = 1
+title.Parent = frame
 
-local function createButton(text, x, y, width)
-	local button = Instance.new("TextButton")
+-- GP
+local gp = Instance.new("TextButton")
+gp.Size = UDim2.new(0, 90, 0, 55)
+gp.Position = UDim2.new(0, 10, 0, 55)
+gp.Text = "GP"
+gp.TextSize = 22
+gp.Parent = frame
 
-	button.Text = text
-	button.Size = UDim2.fromOffset(width, 40)
-	button.Position = UDim2.fromOffset(x, y)
+-- IRP
+local irp = Instance.new("TextButton")
+irp.Size = UDim2.new(0, 90, 0, 55)
+irp.Position = UDim2.new(0, 120, 0, 55)
+irp.Text = "IRP"
+irp.TextSize = 22
+irp.Parent = frame
 
-	button.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
-	button.TextColor3 = Color3.new(1, 1, 1)
-	button.TextSize = 18
-	button.Font = Enum.Font.GothamBold
-	button.BorderSizePixel = 0
+-- Guardar posición
+gp.MouseButton1Click:Connect(function()
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
 
-	button.Parent = frame
+    if root then
+        savedCFrame = root.CFrame
+        gp.Text = "GUARDADO"
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 7)
-	corner.Parent = button
-
-	return button
-end
-
--- Primera fila
-
-local playButton = createButton("PLAY", 8, 8, 100)
-local pauseButton = createButton("PAUSA", 112, 8, 100)
-
--- Segunda fila
-
-local minusButton = createButton("-", 8, 55, 55)
-local speedLabel = createButton("1", 66, 55, 88)
-local plusButton = createButton("+", 162, 55, 50)
-
-speedLabel.Active = false
-
--- Actualizar número de velocidad
-
-local function updateSpeed()
-	speedLabel.Text = tostring(speedLevel)
-end
-
--- Velocidad -
-
-minusButton.MouseButton1Click:Connect(function()
-	if speedLevel > 1 then
-		speedLevel -= 1
-		updateSpeed()
-	end
+        task.wait(1)
+        gp.Text = "GP"
+    end
 end)
 
--- Velocidad +
+-- Ir a posición
+irp.MouseButton1Click:Connect(function()
+    if not savedCFrame then
+        irp.Text = "SIN POS"
 
-plusButton.MouseButton1Click:Connect(function()
-	if speedLevel < 10 then
-		speedLevel += 1
-		updateSpeed()
-	end
+        task.wait(1)
+        irp.Text = "IRP"
+        return
+    end
+
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+
+    if root then
+        root.CFrame = savedCFrame
+    end
 end)
 
--- Pausar / continuar
+-- Hacer la ventana arrastrable
+local dragging = false
+local dragStart
+local startPos
 
-pauseButton.MouseButton1Click:Connect(function()
-	paused = not paused
+title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
 
-	if paused then
-		pauseButton.Text = "CONTINUAR"
-	else
-		pauseButton.Text = "PAUSA"
-	end
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
 end)
 
--- Iniciar recorrido
+title.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
 
-playButton.MouseButton1Click:Connect(function()
-	if running then
-		return
-	end
+        local connection
+        connection = input.Changed:Connect(function()
+            if dragging then
+                local delta = input.Position - dragStart
 
-	running = true
-	paused = false
-	pauseButton.Text = "PAUSA"
-
-	task.spawn(function()
-		while running do
-
-			local points = getPoints()
-
-			if #points == 0 then
-				warn("No se encontraron puntos en Workspace.RespawnPoints")
-				running = false
-				break
-			end
-
-			for _, point in ipairs(points) do
-
-				if not running then
-					break
-				end
-
-				while paused and running do
-					task.wait(0.1)
-				end
-
-				if not running then
-					break
-				end
-
-				teleportTo(point)
-
-				task.wait(speeds[speedLevel])
-			end
-		end
-	end)
+                frame.Position = UDim2.new(
+                    startPos.X.Scale,
+                    startPos.X.Offset + delta.X,
+                    startPos.Y.Scale,
+                    startPos.Y.Offset + delta.Y
+                )
+            else
+                connection:Disconnect()
+            end
+        end)
+    end
 end)
-
-updateSpeed()
