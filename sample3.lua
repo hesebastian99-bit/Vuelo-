@@ -3,6 +3,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 
+-- Puntos guardados
 local savedPositions = {}
 local currentPoint = 0
 
@@ -12,63 +13,74 @@ gui.Name = "GP_IRP"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
--- Panel 200x200
+-- GUÍA HORIZONTAL PEQUEÑA
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 200, 0, 200)
-frame.Position = UDim2.new(0.5, -100, 0.5, -100)
-frame.BackgroundTransparency = 0.1
+frame.Size = UDim2.new(0, 150, 0, 55)
+frame.Position = UDim2.new(0.5, -75, 0.5, -27)
+frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+frame.BackgroundTransparency = 0.05
+frame.BorderSizePixel = 0
 frame.Parent = gui
 
--- Contador
+-- Bordes redondeados
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = frame
+
+-- Puntos
 local counter = Instance.new("TextLabel")
-counter.Size = UDim2.new(1, 0, 0, 30)
-counter.Position = UDim2.new(0, 0, 0, 0)
-counter.Text = "Puntos guardados: 0"
-counter.TextSize = 14
+counter.Size = UDim2.new(0, 28, 0, 45)
+counter.Position = UDim2.new(0, 3, 0, 5)
+counter.Text = "P:0"
+counter.TextSize = 11
+counter.TextColor3 = Color3.fromRGB(255, 255, 255)
 counter.BackgroundTransparency = 1
 counter.Parent = frame
 
--- Zona para mover
-local dragArea = Instance.new("TextLabel")
-dragArea.Size = UDim2.new(1, 0, 0, 30)
-dragArea.Position = UDim2.new(0, 0, 0, 30)
-dragArea.Text = "MOVER"
-dragArea.TextSize = 14
-dragArea.BackgroundTransparency = 1
-dragArea.Parent = frame
-
--- Tamaño de botones
-local buttonWidth = 58
-local buttonHeight = 55
-
 -- GP
 local gp = Instance.new("TextButton")
-gp.Size = UDim2.new(0, buttonWidth, 0, buttonHeight)
-gp.Position = UDim2.new(0, 5, 0, 75)
+gp.Size = UDim2.new(0, 27, 0, 35)
+gp.Position = UDim2.new(0, 33, 0, 10)
 gp.Text = "GP"
-gp.TextSize = 20
+gp.TextSize = 12
+gp.TextColor3 = Color3.fromRGB(255, 255, 255)
+gp.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+gp.BorderSizePixel = 0
 gp.Parent = frame
+
+local gpCorner = Instance.new("UICorner")
+gpCorner.CornerRadius = UDim.new(0, 6)
+gpCorner.Parent = gp
 
 -- IRP
 local irp = Instance.new("TextButton")
-irp.Size = UDim2.new(0, buttonWidth, 0, buttonHeight)
-irp.Position = UDim2.new(0, 71, 0, 75)
+irp.Size = UDim2.new(0, 27, 0, 35)
+irp.Position = UDim2.new(0, 63, 0, 10)
 irp.Text = "IRP"
-irp.TextSize = 20
+irp.TextSize = 11
+irp.TextColor3 = Color3.fromRGB(255, 255, 255)
+irp.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+irp.BorderSizePixel = 0
 irp.Parent = frame
+
+local irpCorner = Instance.new("UICorner")
+irpCorner.CornerRadius = UDim.new(0, 6)
+irpCorner.Parent = irp
 
 -- RESET
 local reset = Instance.new("TextButton")
-reset.Size = UDim2.new(0, buttonWidth, 0, buttonHeight)
-reset.Position = UDim2.new(0, 137, 0, 75)
+reset.Size = UDim2.new(0, 38, 0, 35)
+reset.Position = UDim2.new(0, 93, 0, 10)
 reset.Text = "RESET"
-reset.TextSize = 15
+reset.TextSize = 9
+reset.TextColor3 = Color3.fromRGB(255, 255, 255)
+reset.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+reset.BorderSizePixel = 0
 reset.Parent = frame
 
--- Actualizar contador
-local function updateCounter()
-	counter.Text = "Puntos guardados: " .. #savedPositions
-end
+local resetCorner = Instance.new("UICorner")
+resetCorner.CornerRadius = UDim.new(0, 6)
+resetCorner.Parent = reset
 
 -- Guardar punto
 gp.Activated:Connect(function()
@@ -78,11 +90,11 @@ gp.Activated:Connect(function()
 	if root then
 		table.insert(savedPositions, root.CFrame)
 
-		updateCounter()
+		counter.Text = "P:" .. #savedPositions
 
 		gp.Text = "OK"
 
-		task.delay(0.7, function()
+		task.delay(0.6, function()
 			if gp then
 				gp.Text = "GP"
 			end
@@ -93,9 +105,9 @@ end)
 -- Ir al siguiente punto
 irp.Activated:Connect(function()
 	if #savedPositions == 0 then
-		irp.Text = "NO POS"
+		irp.Text = "NO"
 
-		task.delay(0.8, function()
+		task.delay(0.6, function()
 			if irp then
 				irp.Text = "IRP"
 			end
@@ -118,7 +130,7 @@ irp.Activated:Connect(function()
 
 		irp.Text = tostring(currentPoint)
 
-		task.delay(0.7, function()
+		task.delay(0.6, function()
 			if irp then
 				irp.Text = "IRP"
 			end
@@ -130,24 +142,23 @@ end)
 reset.Activated:Connect(function()
 	savedPositions = {}
 	currentPoint = 0
-
-	updateCounter()
+	counter.Text = "P:0"
 
 	reset.Text = "OK"
 
-	task.delay(0.8, function()
+	task.delay(0.6, function()
 		if reset then
 			reset.Text = "RESET"
 		end
 	end)
 end)
 
--- Arrastrar con dedo o mouse
+-- MOVER: arrastrar toda la guía
 local dragging = false
-local dragStart = nil
-local startPosition = nil
+local dragStart
+local startPosition
 
-dragArea.InputBegan:Connect(function(input)
+frame.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch
 		or input.UserInputType == Enum.UserInputType.MouseButton1 then
 
