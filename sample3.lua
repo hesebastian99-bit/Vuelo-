@@ -1,602 +1,202 @@
--- SUPERMAN FLIGHT
--- GUI movil + vuelo + velocidad + animacion Superman
+-- LobbyPointTeleporter.lua
+-- Roblox / Luau
+-- Los puntos deben estar en Workspace > RespawnPoints
+-- Ejemplo: Point1, Point2, Point3, Point4...
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-
 local player = Players.LocalPlayer
 
-if not player then
-    return
+local pointsFolder = workspace:WaitForChild("RespawnPoints")
+
+-- Velocidades del 1 al 10.
+-- Mientras mayor sea el número, más rápido será el recorrido.
+local speeds = {
+	2.00, -- 1
+	1.50, -- 2
+	1.15, -- 3
+	0.90, -- 4
+	0.70, -- 5
+	0.50, -- 6
+	0.35, -- 7
+	0.25, -- 8
+	0.15, -- 9
+	0.05  -- 10: Súper rápido
+}
+
+local speedLevel = 1
+local running = false
+local paused = false
+
+local function getPoints()
+	local points = {}
+
+	for _, obj in ipairs(pointsFolder:GetChildren()) do
+		if obj:IsA("BasePart") then
+			table.insert(points, obj)
+
+		elseif obj:IsA("Model") then
+			local part = obj.PrimaryPart
+				or obj:FindFirstChildWhichIsA("BasePart", true)
+
+			if part then
+				table.insert(points, part)
+			end
+		end
+	end
+
+	table.sort(points, function(a, b)
+		local numberA = tonumber(a.Name:match("%d+")) or math.huge
+		local numberB = tonumber(b.Name:match("%d+")) or math.huge
+
+		return numberA < numberB
+	end)
+
+	return points
 end
 
--- Eliminar version anterior
-pcall(function()
-    local old = game:GetService("CoreGui"):FindFirstChild("SupermanFlightGUI")
-    if old then
-        old:Destroy()
-    end
-end)
+local function teleportTo(part)
+	local character = player.Character
+		or player.CharacterAdded:Wait()
 
--- Variables
-local flying = false
-local takingOff = false
-local speed = 60
-local minSpeed = 10
-local maxSpeed = 200
+	local root = character:FindFirstChild("HumanoidRootPart")
 
-local character
-local humanoid
-local root
-local animate
+	if root then
+		root.CFrame = part.CFrame + Vector3.new(0, 3, 0)
+	end
+end
 
-local bodyVelocity
-local bodyGyro
-
-local savedHealth = 100
-local savedCollisions = {}
-local motors = {}
-
---==================================================
--- GUI
---==================================================
+-- Crear interfaz
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "SupermanFlightGUI"
+gui.Name = "LobbyPointTeleporter"
 gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-local loaded = false
-
-pcall(function()
-    gui.Parent = game:GetService("CoreGui")
-    loaded = true
-end)
-
-if not loaded then
-    pcall(function()
-        gui.Parent = player:WaitForChild("PlayerGui")
-        loaded = true
-    end)
-end
-
-if not loaded then
-    return
-end
+gui.Parent = player:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame")
-frame.Name = "Main"
-frame.Size = UDim2.fromOffset(190, 55)
-frame.Position = UDim2.new(0.5, -95, 0.78, 0)
-frame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-frame.BackgroundTransparency = 0.12
+frame.Size = UDim2.fromOffset(220, 105)
+frame.Position = UDim2.new(0.5, -110, 0.8, 0)
+frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+frame.BackgroundTransparency = 0.15
 frame.BorderSizePixel = 0
-frame.Active = true
 frame.Parent = gui
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 10)
-corner.Parent = frame
+local frameCorner = Instance.new("UICorner")
+frameCorner.CornerRadius = UDim.new(0, 10)
+frameCorner.Parent = frame
 
-local stroke = Instance.new("UIStroke")
-stroke.Thickness = 1.5
-stroke.Transparency = 0.25
-stroke.Parent = frame
+local function createButton(text, x, y, width)
+	local button = Instance.new("TextButton")
 
-local flyButton = Instance.new("TextButton")
-flyButton.Name = "Fly"
-flyButton.Size = UDim2.fromOffset(90, 38)
-flyButton.Position = UDim2.fromOffset(5, 8)
-flyButton.BackgroundColor3 = Color3.fromRGB(40, 150, 255)
-flyButton.TextColor3 = Color3.new(1, 1, 1)
-flyButton.Text = "VOLAR"
-flyButton.TextSize = 15
-flyButton.Font = Enum.Font.GothamBold
-flyButton.BorderSizePixel = 0
-flyButton.Parent = frame
+	button.Text = text
+	button.Size = UDim2.fromOffset(width, 40)
+	button.Position = UDim2.fromOffset(x, y)
 
-local flyCorner = Instance.new("UICorner")
-flyCorner.CornerRadius = UDim.new(0, 8)
-flyCorner.Parent = flyButton
+	button.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+	button.TextColor3 = Color3.new(1, 1, 1)
+	button.TextSize = 18
+	button.Font = Enum.Font.GothamBold
+	button.BorderSizePixel = 0
 
-local minus = Instance.new("TextButton")
-minus.Name = "Minus"
-minus.Size = UDim2.fromOffset(38, 38)
-minus.Position = UDim2.fromOffset(101, 8)
-minus.BackgroundColor3 = Color3.fromRGB(55, 55, 65)
-minus.TextColor3 = Color3.new(1, 1, 1)
-minus.Text = "-"
-minus.TextSize = 22
-minus.Font = Enum.Font.GothamBold
-minus.BorderSizePixel = 0
-minus.Parent = frame
+	button.Parent = frame
 
-local minusCorner = Instance.new("UICorner")
-minusCorner.CornerRadius = UDim.new(0, 8)
-minusCorner.Parent = minus
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 7)
+	corner.Parent = button
 
-local plus = Instance.new("TextButton")
-plus.Name = "Plus"
-plus.Size = UDim2.fromOffset(38, 38)
-plus.Position = UDim2.fromOffset(147, 8)
-plus.BackgroundColor3 = Color3.fromRGB(55, 55, 65)
-plus.TextColor3 = Color3.new(1, 1, 1)
-plus.Text = "+"
-plus.TextSize = 22
-plus.Font = Enum.Font.GothamBold
-plus.BorderSizePixel = 0
-plus.Parent = frame
-
-local plusCorner = Instance.new("UICorner")
-plusCorner.CornerRadius = UDim.new(0, 8)
-plusCorner.Parent = plus
-
---==================================================
--- GUI MOVIBLE CON EL DEDO
---==================================================
-
-local dragging = false
-local dragStart
-local startPosition
-local dragInput
-
-local function updateDrag(input)
-    local delta = input.Position - dragStart
-
-    frame.Position = UDim2.new(
-        startPosition.X.Scale,
-        startPosition.X.Offset + delta.X,
-        startPosition.Y.Scale,
-        startPosition.Y.Offset + delta.Y
-    )
+	return button
 end
 
-frame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+-- Primera fila
 
-        dragging = true
-        dragStart = input.Position
-        startPosition = frame.Position
+local playButton = createButton("PLAY", 8, 8, 100)
+local pauseButton = createButton("PAUSA", 112, 8, 100)
 
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
+-- Segunda fila
+
+local minusButton = createButton("-", 8, 55, 55)
+local speedLabel = createButton("1", 66, 55, 88)
+local plusButton = createButton("+", 162, 55, 50)
+
+speedLabel.Active = false
+
+-- Actualizar número de velocidad
+
+local function updateSpeed()
+	speedLabel.Text = tostring(speedLevel)
+end
+
+-- Velocidad -
+
+minusButton.MouseButton1Click:Connect(function()
+	if speedLevel > 1 then
+		speedLevel -= 1
+		updateSpeed()
+	end
 end)
 
-frame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch then
+-- Velocidad +
 
-        dragInput = input
-    end
+plusButton.MouseButton1Click:Connect(function()
+	if speedLevel < 10 then
+		speedLevel += 1
+		updateSpeed()
+	end
 end)
 
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        updateDrag(input)
-    end
+-- Pausar / continuar
+
+pauseButton.MouseButton1Click:Connect(function()
+	paused = not paused
+
+	if paused then
+		pauseButton.Text = "CONTINUAR"
+	else
+		pauseButton.Text = "PAUSA"
+	end
 end)
 
---==================================================
--- PERSONAJE
---==================================================
+-- Iniciar recorrido
 
-local function getCharacter()
-    character = player.Character or player.CharacterAdded:Wait()
+playButton.MouseButton1Click:Connect(function()
+	if running then
+		return
+	end
 
-    humanoid = character:FindFirstChildOfClass("Humanoid")
-    root = character:FindFirstChild("HumanoidRootPart")
-    animate = character:FindFirstChild("Animate")
+	running = true
+	paused = false
+	pauseButton.Text = "PAUSA"
 
-    if humanoid then
-        savedHealth = humanoid.Health
-    end
+	task.spawn(function()
+		while running do
 
-    return character, humanoid, root
-end
+			local points = getPoints()
 
-getCharacter()
+			if #points == 0 then
+				warn("No se encontraron puntos en Workspace.RespawnPoints")
+				running = false
+				break
+			end
 
-player.CharacterAdded:Connect(function()
-    flying = false
-    takingOff = false
+			for _, point in ipairs(points) do
 
-    task.wait(1)
+				if not running then
+					break
+				end
 
-    getCharacter()
+				while paused and running do
+					task.wait(0.1)
+				end
 
-    flyButton.Text = "VOLAR"
-    flyButton.BackgroundColor3 = Color3.fromRGB(40, 150, 255)
+				if not running then
+					break
+				end
+
+				teleportTo(point)
+
+				task.wait(speeds[speedLevel])
+			end
+		end
+	end)
 end)
 
---==================================================
--- ENCONTRAR MOTORES DE BRAZOS
---==================================================
-
-local function findMotors()
-    motors = {}
-
-    if not character then
-        return
-    end
-
-    for _, obj in ipairs(character:GetDescendants()) do
-        if obj:IsA("Motor6D") then
-
-            if obj.Name == "RightShoulder"
-                or obj.Name == "Right Shoulder" then
-                motors.RightShoulder = obj
-            end
-
-            if obj.Name == "LeftShoulder"
-                or obj.Name == "Left Shoulder" then
-                motors.LeftShoulder = obj
-            end
-
-            if obj.Name == "Waist" then
-                motors.Waist = obj
-            end
-        end
-    end
-end
-
-local function resetPose()
-    for _, motor in pairs(motors) do
-        if motor and motor.Parent then
-            motor.Transform = CFrame.new()
-        end
-    end
-end
-
---==================================================
--- POSE SUPERMAN
---==================================================
-
-local function supermanPose()
-    if not flying then
-        return
-    end
-
-    local right = motors.RightShoulder
-    local left = motors.LeftShoulder
-    local waist = motors.Waist
-
-    if right then
-        right.Transform =
-            CFrame.Angles(
-                math.rad(-80),
-                math.rad(8),
-                math.rad(15)
-            )
-    end
-
-    if left then
-        left.Transform =
-            CFrame.Angles(
-                math.rad(-80),
-                math.rad(-8),
-                math.rad(-15)
-            )
-    end
-
-    if waist then
-        waist.Transform =
-            CFrame.Angles(
-                math.rad(12),
-                0,
-                0
-            )
-    end
-end
-
---==================================================
--- COLISIONES
---==================================================
-
-local function disableCollisions()
-    savedCollisions = {}
-
-    if not character then
-        return
-    end
-
-    for _, part in ipairs(character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            savedCollisions[part] = part.CanCollide
-            part.CanCollide = false
-        end
-    end
-end
-
-local function restoreCollisions()
-    for part, value in pairs(savedCollisions) do
-        if part and part.Parent then
-            part.CanCollide = value
-        end
-    end
-
-    savedCollisions = {}
-end
-
---==================================================
--- DESACTIVAR ANIMACIONES DE CAMINAR
---==================================================
-
-local function disableAnimations()
-    if animate then
-        animate.Disabled = true
-    end
-end
-
-local function enableAnimations()
-    if animate and animate.Parent then
-        animate.Disabled = false
-    end
-end
-
---==================================================
--- DESPEGUE + VUELTA
---==================================================
-
-local function takeoff()
-    if not humanoid or not root then
-        return false
-    end
-
-    takingOff = true
-
-    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-
-    root.AssemblyLinearVelocity = Vector3.new(0, 45, 0)
-
-    local start = tick()
-    local duration = 0.55
-
-    while tick() - start < duration do
-        if not root or not root.Parent then
-            takingOff = false
-            return false
-        end
-
-        local elapsed = tick() - start
-        local rotation = math.rad(720) * (elapsed / duration)
-
-        root.CFrame =
-            CFrame.new(root.Position)
-            * CFrame.Angles(rotation, 0, 0)
-
-        RunService.Heartbeat:Wait()
-    end
-
-    root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-
-    takingOff = false
-
-    return true
-end
-
---==================================================
--- EMPEZAR A VOLAR
---==================================================
-
-local function startFlying()
-    if flying or takingOff then
-        return
-    end
-
-    getCharacter()
-
-    if not character or not humanoid or not root then
-        return
-    end
-
-    findMotors()
-
-    savedHealth = humanoid.Health
-
-    disableAnimations()
-    disableCollisions()
-
-    humanoid.AutoRotate = false
-
-    local success = takeoff()
-
-    if not success then
-        enableAnimations()
-        restoreCollisions()
-        humanoid.AutoRotate = true
-        return
-    end
-
-    flying = true
-
-    bodyVelocity = Instance.new("BodyVelocity")
-    bodyVelocity.Name = "SupermanVelocity"
-    bodyVelocity.MaxForce = Vector3.new(1000000, 1000000, 1000000)
-    bodyVelocity.P = 30000
-    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-    bodyVelocity.Parent = root
-
-    bodyGyro = Instance.new("BodyGyro")
-    bodyGyro.Name = "SupermanGyro"
-    bodyGyro.MaxTorque = Vector3.new(1000000, 1000000, 1000000)
-    bodyGyro.P = 30000
-    bodyGyro.D = 1000
-    bodyGyro.Parent = root
-
-    flyButton.Text = "PARAR"
-    flyButton.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
-end
-
---==================================================
--- PARAR DE VOLAR
---==================================================
-
-local function stopFlying()
-    if not flying and not takingOff then
-        return
-    end
-
-    flying = false
-    takingOff = false
-
-    if bodyVelocity then
-        bodyVelocity:Destroy()
-        bodyVelocity = nil
-    end
-
-    if bodyGyro then
-        bodyGyro:Destroy()
-        bodyGyro = nil
-    end
-
-    resetPose()
-    restoreCollisions()
-    enableAnimations()
-
-    if humanoid and humanoid.Parent then
-        humanoid.AutoRotate = true
-
-        pcall(function()
-            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-        end)
-
-        if humanoid.Health > 0 and savedHealth > 0 then
-            humanoid.Health = math.min(savedHealth, humanoid.MaxHealth)
-        end
-    end
-
-    flyButton.Text = "VOLAR"
-    flyButton.BackgroundColor3 = Color3.fromRGB(40, 150, 255)
-end
-
---==================================================
--- CONTROL DEL VUELO
---==================================================
-
-RunService.RenderStepped:Connect(function()
-    if not flying then
-        return
-    end
-
-    if not character
-        or not character.Parent
-        or not humanoid
-        or not root
-        or not root.Parent then
-
-        stopFlying()
-        return
-    end
-
-    -- Mantener vida local
-    if humanoid.Health > 0 and humanoid.Health < savedHealth then
-        humanoid.Health = savedHealth
-    end
-
-    local camera = workspace.CurrentCamera
-
-    if not camera then
-        return
-    end
-
-    local joystick = humanoid.MoveDirection
-    local cameraLook = camera.CFrame.LookVector
-
-    local horizontal
-
-    if joystick.Magnitude > 0.05 then
-        horizontal = Vector3.new(
-            joystick.X,
-            0,
-            joystick.Z
-        )
-    else
-        horizontal = Vector3.new(0, 0, 0)
-    end
-
-    local vertical = 0
-
-    if joystick.Magnitude > 0.05 then
-        vertical = cameraLook.Y * speed
-    end
-
-    local velocity =
-        horizontal * speed
-        + Vector3.new(0, vertical, 0)
-
-    if bodyVelocity then
-        bodyVelocity.Velocity = velocity
-    end
-
-    -- Mirar hacia donde apunta la camara
-    local flatLook = Vector3.new(
-        cameraLook.X,
-        0,
-        cameraLook.Z
-    )
-
-    if flatLook.Magnitude > 0.01 and bodyGyro then
-        flatLook = flatLook.Unit
-
-        bodyGyro.CFrame =
-            CFrame.lookAt(
-                root.Position,
-                root.Position + flatLook
-            )
-            * CFrame.Angles(math.rad(-10), 0, 0)
-    end
-
-    -- Pose Superman constantemente
-    supermanPose()
-end)
-
---==================================================
--- BOTONES
---==================================================
-
-flyButton.Activated:Connect(function()
-    if flying then
-        stopFlying()
-    else
-        startFlying()
-    end
-end)
-
-minus.Activated:Connect(function()
-    speed = math.max(minSpeed, speed - 10)
-end)
-
-plus.Activated:Connect(function()
-    speed = math.min(maxSpeed, speed + 10)
-end)
-
---==================================================
--- SI MUERE EL PERSONAJE
---==================================================
-
-if humanoid then
-    humanoid.Died:Connect(function()
-        flying = false
-        takingOff = false
-
-        if bodyVelocity then
-            bodyVelocity:Destroy()
-            bodyVelocity = nil
-        end
-
-        if bodyGyro then
-            bodyGyro:Destroy()
-            bodyGyro = nil
-        end
-
-        resetPose()
-    end)
-end
+updateSpeed()
