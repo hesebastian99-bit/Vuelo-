@@ -1,168 +1,185 @@
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 
--- CONFIGURACIÓN
-local checkpointFolder = workspace:WaitForChild("Checkpoints")
+local savedPositions = {}
+local currentPoint = 0
 
-local speeds = {
-	[1] = 0.8, -- Lento
-	[2] = 0.3, -- Rápido
-	[3] = 0.08 -- Rapidísimo
-}
-
-local speedLevel = 1
-local playing = false
-
-local checkpoints = {}
-
---------------------------------------------------
--- DETECTAR CHECKPOINTS
---------------------------------------------------
-
-local function getNumber(part)
-	local number = tonumber(string.match(part.Name, "%d+"))
-	return number
-end
-
-local function findCheckpoints()
-	checkpoints = {}
-
-	for _, object in ipairs(checkpointFolder:GetChildren()) do
-		if object:IsA("BasePart") then
-			table.insert(checkpoints, object)
-		end
-	end
-
-	table.sort(checkpoints, function(a, b)
-		local aNumber = getNumber(a)
-		local bNumber = getNumber(b)
-
-		if aNumber and bNumber then
-			return aNumber < bNumber
-		elseif aNumber then
-			return true
-		elseif bNumber then
-			return false
-		end
-
-		return a.Position.X < b.Position.X
-	end)
-end
-
-findCheckpoints()
-
---------------------------------------------------
 -- GUI
---------------------------------------------------
-
 local gui = Instance.new("ScreenGui")
-gui.Name = "CheckpointController"
+gui.Name = "GP_IRP"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
+-- Panel 200x200
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 170, 0, 65)
-frame.Position = UDim2.new(0.5, -85, 0.75, 0)
-frame.BackgroundTransparency = 0.15
+frame.Size = UDim2.new(0, 200, 0, 200)
+frame.Position = UDim2.new(0.5, -100, 0.5, -100)
+frame.BackgroundTransparency = 0.1
 frame.Parent = gui
 
-local play = Instance.new("TextButton")
-play.Size = UDim2.new(0, 80, 0, 28)
-play.Position = UDim2.new(0, 3, 0, 3)
-play.Text = "PLAY"
-play.TextSize = 14
-play.Parent = frame
+-- Contador
+local counter = Instance.new("TextLabel")
+counter.Size = UDim2.new(1, 0, 0, 30)
+counter.Position = UDim2.new(0, 0, 0, 0)
+counter.Text = "Puntos guardados: 0"
+counter.TextSize = 14
+counter.BackgroundTransparency = 1
+counter.Parent = frame
 
-local pause = Instance.new("TextButton")
-pause.Size = UDim2.new(0, 80, 0, 28)
-pause.Position = UDim2.new(0, 87, 0, 3)
-pause.Text = "PAUSA"
-pause.TextSize = 14
-pause.Parent = frame
+-- Zona para mover
+local dragArea = Instance.new("TextLabel")
+dragArea.Size = UDim2.new(1, 0, 0, 30)
+dragArea.Position = UDim2.new(0, 0, 0, 30)
+dragArea.Text = "MOVER"
+dragArea.TextSize = 14
+dragArea.BackgroundTransparency = 1
+dragArea.Parent = frame
 
-local minus = Instance.new("TextButton")
-minus.Size = UDim2.new(0, 45, 0, 28)
-minus.Position = UDim2.new(0, 3, 0, 34)
-minus.Text = "-"
-minus.TextSize = 18
-minus.Parent = frame
+-- Tamaño de botones
+local buttonWidth = 58
+local buttonHeight = 55
 
-local speed = Instance.new("TextLabel")
-speed.Size = UDim2.new(0, 70, 0, 28)
-speed.Position = UDim2.new(0, 50, 0, 34)
-speed.Text = "1"
-speed.TextSize = 18
-speed.BackgroundTransparency = 1
-speed.Parent = frame
+-- GP
+local gp = Instance.new("TextButton")
+gp.Size = UDim2.new(0, buttonWidth, 0, buttonHeight)
+gp.Position = UDim2.new(0, 5, 0, 75)
+gp.Text = "GP"
+gp.TextSize = 20
+gp.Parent = frame
 
-local plus = Instance.new("TextButton")
-plus.Size = UDim2.new(0, 45, 0, 28)
-plus.Position = UDim2.new(0, 122, 0, 34)
-plus.Text = "+"
-plus.TextSize = 18
-plus.Parent = frame
+-- IRP
+local irp = Instance.new("TextButton")
+irp.Size = UDim2.new(0, buttonWidth, 0, buttonHeight)
+irp.Position = UDim2.new(0, 71, 0, 75)
+irp.Text = "IRP"
+irp.TextSize = 20
+irp.Parent = frame
 
---------------------------------------------------
--- CAMBIAR VELOCIDAD
---------------------------------------------------
+-- RESET
+local reset = Instance.new("TextButton")
+reset.Size = UDim2.new(0, buttonWidth, 0, buttonHeight)
+reset.Position = UDim2.new(0, 137, 0, 75)
+reset.Text = "RESET"
+reset.TextSize = 15
+reset.Parent = frame
 
-minus.Activated:Connect(function()
-	if speedLevel > 1 then
-		speedLevel -= 1
-		speed.Text = tostring(speedLevel)
+-- Actualizar contador
+local function updateCounter()
+	counter.Text = "Puntos guardados: " .. #savedPositions
+end
+
+-- Guardar punto
+gp.Activated:Connect(function()
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	if root then
+		table.insert(savedPositions, root.CFrame)
+
+		updateCounter()
+
+		gp.Text = "OK"
+
+		task.delay(0.7, function()
+			if gp then
+				gp.Text = "GP"
+			end
+		end)
 	end
 end)
 
-plus.Activated:Connect(function()
-	if speedLevel < 3 then
-		speedLevel += 1
-		speed.Text = tostring(speedLevel)
-	end
-end)
+-- Ir al siguiente punto
+irp.Activated:Connect(function()
+	if #savedPositions == 0 then
+		irp.Text = "NO POS"
 
---------------------------------------------------
--- PLAY
---------------------------------------------------
+		task.delay(0.8, function()
+			if irp then
+				irp.Text = "IRP"
+			end
+		end)
 
-play.Activated:Connect(function()
-	if playing then
 		return
 	end
 
-	findCheckpoints()
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
 
-	if #checkpoints == 0 then
-		play.Text = "SIN CP"
-		task.wait(1)
-		play.Text = "PLAY"
+	if root then
+		currentPoint = currentPoint + 1
+
+		if currentPoint > #savedPositions then
+			currentPoint = 1
+		end
+
+		root.CFrame = savedPositions[currentPoint]
+
+		irp.Text = tostring(currentPoint)
+
+		task.delay(0.7, function()
+			if irp then
+				irp.Text = "IRP"
+			end
+		end)
+	end
+end)
+
+-- RESET
+reset.Activated:Connect(function()
+	savedPositions = {}
+	currentPoint = 0
+
+	updateCounter()
+
+	reset.Text = "OK"
+
+	task.delay(0.8, function()
+		if reset then
+			reset.Text = "RESET"
+		end
+	end)
+end)
+
+-- Arrastrar con dedo o mouse
+local dragging = false
+local dragStart = nil
+local startPosition = nil
+
+dragArea.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+		dragging = true
+		dragStart = input.Position
+		startPosition = frame.Position
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if not dragging then
 		return
 	end
 
-	playing = true
+	if input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseMovement then
 
-	for _, checkpoint in ipairs(checkpoints) do
-		if not playing then
-			break
-		end
+		local delta = input.Position - dragStart
 
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart")
-
-		if root and checkpoint and checkpoint.Parent then
-			root.CFrame = checkpoint.CFrame + Vector3.new(0, 4, 0)
-		end
-
-		task.wait(speeds[speedLevel])
+		frame.Position = UDim2.new(
+			startPosition.X.Scale,
+			startPosition.X.Offset + delta.X,
+			startPosition.Y.Scale,
+			startPosition.Y.Offset + delta.Y
+		)
 	end
-
-	playing = false
 end)
 
---------------------------------------------------
--- PAUSA
---------------------------------------------------
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseButton1 then
 
-pause.Activated:Connect(function()
-	playing = false
+		dragging = false
+	end
 end)
